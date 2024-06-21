@@ -1,6 +1,6 @@
 import { bigint, pgSchema, uuid, varchar } from 'drizzle-orm/pg-core';
 
-export const schema = pgSchema('task_manager')
+export const schema = pgSchema('task_manager');
 
 export const priority = schema.enum('priority', ['low', 'medium', 'high']);
 
