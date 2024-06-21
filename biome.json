@@ -49,7 +49,7 @@
 				"noUnsafeFinally": "error",
 				"noUnsafeOptionalChaining": "error",
 				"noUnusedLabels": "error",
-				"noUnusedVariables": "off",
+				"noUnusedVariables": "warn",
 				"useArrayLiterals": "off",
 				"useIsNan": "error",
 				"useValidForDirection": "error",
@@ -114,20 +114,6 @@
 			"quoteStyle": "single",
 			"attributePosition": "auto"
 		},
-		"globals": []
-	},
-	"overrides": [
-		{
-			"include": ["*.cjs", ".*.cjs"],
-			"javascript": {
-				"globals": ["require", "__dirname", "__filename", "module", "exports"]
-			},
-			"linter": { "rules": {} }
-		},
-		{
-			"include": ["*.mjs", ".*.mjs"],
-			"javascript": { "globals": [] },
-			"linter": { "rules": {} }
-		}
-	]
+		"globals": ["require", "__dirname", "__filename", "module", "exports"]
+	}
 }
