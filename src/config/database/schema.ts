@@ -18,11 +18,14 @@ export const tasks = schema.table('task', {
     .notNull(),
 });
 
+export const userRole = schema.enum('role', ['admin', 'user']);
+
 export const user = schema.table('user', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 128 }).notNull(),
   password: varchar('password', { length: 128 }).notNull(),
   username: varchar('username', { length: 128 }).notNull(),
+  role: userRole('role').notNull(),
   created_at: bigint('created_at', { mode: 'number' }).notNull(),
   updated_at: bigint('updated_at', { mode: 'number' }).notNull(),
 });

@@ -4,5 +4,15 @@ export interface ErrorResponse {
 
 export interface AuthToken {
   id: string;
-  name: string;
+  username: string;
+  role: "admin" | "user";
+}
+
+export interface Id {
+  id: string;
+}
+
+export interface TableDate {
+  created_at: number;
+  updated_at: number;
 }
