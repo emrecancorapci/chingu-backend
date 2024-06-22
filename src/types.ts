@@ -5,7 +5,7 @@ export interface ErrorResponse {
 export interface AuthToken {
   id: string;
   username: string;
-  role: "admin" | "user";
+  role: 'admin' | 'user';
 }
 
 export interface Id {
