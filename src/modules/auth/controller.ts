@@ -41,21 +41,17 @@ export async function login(
       return response.status(404).json({ message: 'Invalid email or password.' });
     }
 
-    jwt.sign(
+    const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
       secret,
-      jwtConfig,
-      function jwtSignCallback(err, token) {
-        if (err) {
-          return response.status(500).json({ message: 'Internal Server Error' });
-        }
-        if (token) {
-          return response.status(201).json({ token });
-        }
-      }
+      jwtConfig
     );
 
-    return response.status(500).json({ message: 'Internal Server Error' });
+    if (token) {
+      return response.status(201).json({ token });
+    }
+
+    throw new Error('Internal Server Error');
   } catch (error) {
     console.error(error);
     return response.status(500).json({ message: 'Internal Server Error' });
@@ -96,31 +92,31 @@ export async function register(
       updated_at: Date.now(),
     };
 
-    const [{ id }] = await database
+    const data = await database
       .insert(users)
       .values(user)
       .returning({ id: users.id })
-      .onConflictDoNothing({ target: users.email });
+      .onConflictDoNothing()
+      .catch((error) => {
+        console.error(error);
+        return null;
+      });
 
-    if (!id) {
+    if (!data) {
       return response.status(409).json({ message: 'User already exists.' });
     }
 
-    jwt.sign(
-      { id, username: user.username, role: user.role },
+    const token = jwt.sign(
+      { id: data[0].id, username: user.username, role: user.role },
       secret,
-      jwtConfig,
-      function jwtSignCallback(err, token) {
-        if (err) {
-          return response.status(500).json({ message: 'Internal Server Error' });
-        }
-        if (token) {
-          return response.status(201).json({ id, token });
-        }
-      }
+      jwtConfig
     );
 
-    return response.status(500).json({ message: 'Internal Server Error' });
+    if (token) {
+      return response.status(201).json({ id: data[0].id, token });
+    }
+
+    throw new Error('Internal Server Error');
   } catch (error) {
     console.error(error);
     return response.status(500).json({ message: 'Internal Server Error' });
