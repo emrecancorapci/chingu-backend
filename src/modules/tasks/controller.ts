@@ -5,23 +5,15 @@ import { TaskBody, WithId } from './types.ts';
 import { tasks } from '@/config/database/schema.ts';
 import { and, eq } from 'drizzle-orm';
 
-type Task = TaskBody & WithId;
+type Locals = { user: AuthToken };
 
 // GET
+type Task = TaskBody & WithId;
 type GetParameters = { id?: string };
 type GetResponseBody = { tasks: Task[] };
-type GetRequestBody = void;
-type GetQueries = void;
-type GetLocals = AuthToken;
 
 export async function get(
-  request: Request<
-    GetParameters,
-    GetResponseBody | ErrorResponse,
-    GetRequestBody,
-    GetQueries,
-    GetLocals
-  >,
+  request: Request<GetParameters, GetResponseBody | ErrorResponse, void, void, Locals>,
   response: Response<GetResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
@@ -47,7 +39,6 @@ export async function get(
 }
 
 // POST
-type PostParameters = void;
 type PostResponseBody = { id: string };
 type PostRequestBody = {
   title: string;
@@ -55,17 +46,9 @@ type PostRequestBody = {
   priority: 'low' | 'medium' | 'high' | null;
   due_date: number | null;
 };
-type PostQueries = void;
-type PostLocals = AuthToken;
 
 export async function post(
-  request: Request<
-    PostParameters,
-    PostResponseBody | ErrorResponse,
-    PostRequestBody,
-    PostQueries,
-    PostLocals
-  >,
+  request: Request<void, PostResponseBody | ErrorResponse, PostRequestBody, void, Locals>,
   response: Response<PostResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
@@ -88,21 +71,13 @@ type PatchBody = {
   description: string | null;
   priority: 'low' | 'medium' | 'high' | null;
   due_date: number | null;
-};
-type PatchParameters = void;
-type PatchResponseBody = WithId & PatchBody;
-type PatchRequestBody = WithId & PatchBody;
-type PatchQueries = void;
-type PatchLocals = AuthToken;
+} & WithId;
+
+type PatchResponseBody = PatchBody;
+type PatchRequestBody = PatchBody;
 
 export async function patch(
-  request: Request<
-    PatchParameters,
-    PatchResponseBody | ErrorResponse,
-    PatchRequestBody,
-    PatchQueries,
-    PatchLocals
-  >,
+  request: Request<void, PatchResponseBody | ErrorResponse, PatchRequestBody, void, Locals>,
   response: Response<PatchResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
@@ -123,17 +98,14 @@ export async function patch(
 // DELETE
 type DeleteParameters = { id: string };
 type DeleteResponseBody = { id: string };
-type DeleteRequestBody = void;
-type DeleteQueries = void;
-type DeleteLocals = AuthToken;
 
 export async function deleteTask(
   request: Request<
     DeleteParameters,
     DeleteResponseBody | ErrorResponse,
-    DeleteRequestBody,
-    DeleteQueries,
-    DeleteLocals
+    void,
+    void,
+    Locals
   >,
   response: Response<DeleteResponseBody | ErrorResponse>
 ) {
