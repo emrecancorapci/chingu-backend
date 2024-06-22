@@ -13,23 +13,19 @@ type GetParameters = { id: string };
 type GetResponseBody = { task: Task };
 
 export async function get(
-  request: Request<
-    GetParameters,
-    GetResponseBody | ErrorResponse,
-    void, // Request Body
-    void, // Request Query
-    Locals
-  >,
-  response: Response<GetResponseBody | ErrorResponse>
+  request: Request<GetParameters>,
+  response: Response<GetResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId, role } = response.locals;
-  const { id: paramTaskId } = request.params;
+  const {
+    user: { id: userId, role },
+  } = response.locals;
+  const { id: taskId } = request.params;
 
   try {
     switch (role) {
       case 'admin': {
         const task: Task | undefined = await database.query.tasks.findFirst({
-          where: ({ id }) => eq(id, paramTaskId),
+          where: ({ id }) => eq(id, taskId),
         });
 
         if (!task) {
@@ -40,8 +36,7 @@ export async function get(
       }
       case 'user': {
         const task: Task | undefined = await database.query.tasks.findFirst({
-          where: ({ id: task_id, user_id }) =>
-            and(eq(user_id, userId), eq(task_id, paramTaskId)),
+          where: ({ id: task_id, user_id }) => and(eq(user_id, userId), eq(task_id, taskId)),
         });
 
         if (!task) {
@@ -64,16 +59,12 @@ export async function get(
 type GetAllResponseBody = { tasks: Task[] };
 
 export async function getAll(
-  _: Request<
-    void, // Request Parameters
-    GetAllResponseBody | ErrorResponse,
-    void, // Request Body
-    void, // Request Query
-    Locals
-  >,
-  response: Response<GetAllResponseBody | ErrorResponse>
+  _: Request,
+  response: Response<GetAllResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId, role } = response.locals;
+  const {
+    user: { id: userId, role },
+  } = response.locals;
 
   try {
     switch (role) {
@@ -120,13 +111,13 @@ export async function post(
   request: Request<
     void, // Request Parameters
     PostResponseBody | ErrorResponse,
-    PostRequestBody,
-    void, // Request Query
-    Locals
+    PostRequestBody
   >,
-  response: Response<PostResponseBody | ErrorResponse>
+  response: Response<PostResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId } = response.locals;
+  const {
+    user: { id: userId },
+  } = response.locals;
   const task = {
     title: request.body.title,
     description: request.body.description,
@@ -138,12 +129,9 @@ export async function post(
   };
 
   try {
-    const databaseResponse = await database
-      .insert(tasks)
-      .values(task)
-      .returning({ id: tasks.id });
+    const [newTask] = await database.insert(tasks).values(task).returning({ id: tasks.id });
 
-    response.status(201).json({ id: databaseResponse[0].id });
+    response.status(201).json({ id: newTask.id });
   } catch (error) {
     console.error(error);
     return response.status(500).json({ message: 'Internal Server Error' });
@@ -166,13 +154,13 @@ export async function patch(
   request: Request<
     void, // Request Parameters
     PatchResponseBody | ErrorResponse,
-    PatchRequestBody,
-    void, // Request Query
-    Locals
+    PatchRequestBody
   >,
-  response: Response<PatchResponseBody | ErrorResponse>
+  response: Response<PatchResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId } = response.locals;
+  const {
+    user: { id: userId },
+  } = response.locals;
   const task = {
     ...request.body,
     updated_at: Date.now(),
@@ -197,16 +185,12 @@ type DeleteParameters = { id: string };
 type DeleteResponseBody = { id: string };
 
 export async function deleteTask(
-  request: Request<
-    DeleteParameters,
-    DeleteResponseBody | ErrorResponse,
-    void, // Request body
-    void, // Query string
-    Locals
-  >,
-  response: Response<DeleteResponseBody | ErrorResponse>
+  request: Request<DeleteParameters>,
+  response: Response<DeleteResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId } = response.locals;
+  const {
+    user: { id: userId },
+  } = response.locals;
   const { id } = request.params;
 
   if (!id) {

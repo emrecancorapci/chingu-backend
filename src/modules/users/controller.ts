@@ -14,16 +14,12 @@ type GetParameters = { id: string };
 type GetResponseBody = { user: User };
 
 export async function get(
-  request: Request<
-    GetParameters,
-    GetResponseBody | ErrorResponse,
-    void, // Request Body
-    void, // Request Query
-    Locals
-  >,
-  response: Response<GetResponseBody | ErrorResponse>
+  request: Request<GetParameters>,
+  response: Response<GetResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId, role } = response.locals;
+  const {
+    user: { id: userId, role },
+  } = response.locals;
   const { id: queriedId } = request.params;
 
   if (role !== 'admin' && userId !== queriedId) {
@@ -49,16 +45,12 @@ export async function get(
 type GetAllResponseBody = { users: User[] };
 
 export async function getAll(
-  _: Request<
-    void,
-    GetAllResponseBody | ErrorResponse,
-    void, // Request Body
-    void, // Request Query
-    Locals
-  >,
-  response: Response<GetAllResponseBody | ErrorResponse>
+  _: Request,
+  response: Response<GetAllResponseBody | ErrorResponse, Locals>
 ) {
-  const { role } = response.locals;
+  const {
+    user: { role },
+  } = response.locals;
 
   if (role !== 'admin') {
     return response.status(403).json({ message: 'Forbidden' });
@@ -89,13 +81,11 @@ export async function post(
   request: Request<
     void, // Request Parameters
     PostResponseBody | ErrorResponse,
-    PostRequestBody,
-    void, // Request Query
-    Locals
+    PostRequestBody
   >,
-  response: Response<PostResponseBody | ErrorResponse>
+  response: Response<PostResponseBody | ErrorResponse, Locals>
 ) {
-  if (response.locals.role !== 'admin') {
+  if (response.locals.user.role !== 'admin') {
     return response.status(403).json({ message: 'Forbidden' });
   }
 
@@ -134,13 +124,13 @@ export async function patch(
   request: Request<
     void, // Request Parameters
     PatchResponseBody | ErrorResponse,
-    PatchRequestBody,
-    void, // Request Query
-    Locals
+    PatchRequestBody
   >,
-  response: Response<PatchResponseBody | ErrorResponse>
+  response: Response<PatchResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId, role } = response.locals;
+  const {
+    user: { id: userId, role },
+  } = response.locals;
   const { id: requestedId } = request.body;
 
   if (userId !== requestedId && role !== 'admin') {
@@ -175,16 +165,12 @@ type DeleteParameters = { id: string };
 type DeleteResponseBody = { id: string };
 
 export async function _delete(
-  request: Request<
-    DeleteParameters,
-    DeleteResponseBody | ErrorResponse,
-    void, // Request body
-    void, // Query string
-    Locals
-  >,
-  response: Response<DeleteResponseBody | ErrorResponse>
+  request: Request<DeleteParameters>,
+  response: Response<DeleteResponseBody | ErrorResponse, Locals>
 ) {
-  const { userId, role } = response.locals;
+  const {
+    user: { id: userId, role },
+  } = response.locals;
   const { id } = request.params;
 
   if (userId !== id && role !== 'admin') {
