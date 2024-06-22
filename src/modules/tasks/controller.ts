@@ -40,8 +40,8 @@ export async function get(
       }
       case 'user': {
         const task: Task | undefined = await database.query.tasks.findFirst({
-          where: ({ id: taskId, userId: taskUserId }) =>
-            and(eq(taskUserId, userId), eq(taskId, paramTaskId)),
+          where: ({ id: task_id, user_id }) =>
+            and(eq(user_id, userId), eq(task_id, paramTaskId)),
         });
 
         if (!task) {
@@ -88,7 +88,7 @@ export async function getAll(
       }
       case 'user': {
         const tasks: Task[] = await database.query.tasks.findMany({
-          where: ({ userId: taskUserId }) => eq(taskUserId, userId),
+          where: ({ user_id }) => eq(user_id, userId),
         });
 
         if (!tasks.length) {
@@ -132,7 +132,7 @@ export async function post(
     description: request.body.description,
     priority: request.body.priority,
     due_date: request.body.due_date,
-    userId,
+    user_id: userId,
     created_at: Date.now(),
     updated_at: Date.now(),
   };
@@ -156,6 +156,7 @@ type PatchBody = {
   description?: string | null;
   priority?: 'low' | 'medium' | 'high' | null;
   due_date?: number | null;
+  completed_at?: number | null;
 } & Id;
 
 type PatchResponseBody = PatchBody;
@@ -178,13 +179,13 @@ export async function patch(
   };
 
   try {
-    const [{ id, title, description, priority, due_date }] = await database
+    const [{ id, title, description, priority, due_date, completed_at }] = await database
       .update(tasks)
       .set(task)
-      .where(and(eq(tasks.id, task.id), eq(tasks.userId, userId)))
+      .where(and(eq(tasks.id, task.id), eq(tasks.user_id, userId)))
       .returning();
 
-    response.status(200).json({ id, title, description, priority, due_date });
+    response.status(200).json({ id, title, description, priority, due_date, completed_at });
   } catch (error) {
     console.error(error);
     return response.status(500).json({ message: 'Internal Server Error' });
@@ -215,8 +216,12 @@ export async function deleteTask(
   try {
     const [body] = await database
       .delete(tasks)
-      .where(and(eq(tasks.userId, userId), eq(tasks.id, id)))
+      .where(and(eq(tasks.user_id, userId), eq(tasks.id, id)))
       .returning({ id: tasks.id });
+
+    if (!body) {
+      return response.status(404).json({ message: 'No data found.' });
+    }
 
     response.status(200).json(body);
   } catch (error) {

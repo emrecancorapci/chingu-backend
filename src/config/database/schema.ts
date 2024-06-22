@@ -13,7 +13,7 @@ export const tasks = schema.table('task', {
   updated_at: bigint('updated_at', { mode: 'number' }).notNull(),
   completed_at: bigint('completed_at', { mode: 'number' }),
   due_date: bigint('due_date', { mode: 'number' }),
-  userId: uuid('user_id')
+  user_id: uuid('user_id')
     .references(() => users.id)
     .notNull(),
 });

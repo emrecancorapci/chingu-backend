@@ -198,6 +198,10 @@ export async function _delete(
   try {
     const [body] = await database.delete(users).where(eq(users.id, id)).returning({ id: users.id });
 
+    if (!body) {
+      return response.status(404).json({ message: 'No data found.' });
+    }
+
     return response.status(200).json(body);
   } catch (error) {
     console.error(error);
