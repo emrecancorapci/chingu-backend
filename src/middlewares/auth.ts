@@ -28,7 +28,7 @@ export default async function authenticationMiddleware(
       throw new Error('Not authorized. AuthToken is invalid.');
     }
 
-    const serverUser = await database.query.user.findFirst({
+    const serverUser = await database.query.users.findFirst({
       where: ({ id: serverId, role: serverRole }, { and, eq }) =>
         and(eq(serverId, id), eq(serverRole, role)),
     });

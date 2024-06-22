@@ -9,8 +9,8 @@ type Locals = { user: AuthToken };
 
 // GET
 type Task = TaskBody & TableDate & Id;
-type GetParameters = { id?: string };
-type GetResponseBody = { tasks: Task[] };
+type GetParameters = { id: string };
+type GetResponseBody = { task: Task };
 
 export async function get(
   request: Request<
@@ -22,26 +22,89 @@ export async function get(
   >,
   response: Response<GetResponseBody | ErrorResponse>
 ) {
-  const { userId } = response.locals;
-  const { id } = request.params;
+  const { userId, role } = response.locals;
+  const { id: paramTaskId } = request.params;
 
-  const data: Task[] = await database.query.tasks
-    .findMany({
-      where: ({ id: taskId, userId: taskUserId }, { eq, and }) => {
-        return id != undefined
-          ? and(eq(taskUserId, userId), eq(taskId, id))
-          : eq(taskUserId, userId);
-      },
-    })
-    .catch((error) => {
-      throw new Error(error);
-    });
+  try {
+    switch (role) {
+      case 'admin': {
+        const task: Task | undefined = await database.query.tasks.findFirst({
+          where: ({ id }) => eq(id, paramTaskId),
+        });
 
-  if (data.length === 0) {
-    return response.status(200).json({ tasks: [] });
+        if (!task) {
+          return response.status(404).json({ message: 'No data found.' });
+        }
+
+        return response.status(200).json({ task });
+      }
+      case 'user': {
+        const task: Task | undefined = await database.query.tasks.findFirst({
+          where: ({ id: taskId, userId: taskUserId }) =>
+            and(eq(taskUserId, userId), eq(taskId, paramTaskId)),
+        });
+
+        if (!task) {
+          return response.status(404).json({ message: 'No data found.' });
+        }
+
+        return response.status(200).json({ task });
+      }
+      default: {
+        return response.status(400).json({ message: 'Token is corrupted' });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ message: 'Internal Server Error' });
   }
+}
 
-  response.status(200).json({ tasks: data });
+// GET ALL
+type GetAllResponseBody = { tasks: Task[] };
+
+export async function getAll(
+  _: Request<
+    void, // Request Parameters
+    GetAllResponseBody | ErrorResponse,
+    void, // Request Body
+    void, // Request Query
+    Locals
+  >,
+  response: Response<GetAllResponseBody | ErrorResponse>
+) {
+  const { userId, role } = response.locals;
+
+  try {
+    switch (role) {
+      case 'admin': {
+        const tasks: Task[] = await database.query.tasks.findMany();
+
+        if (!tasks.length) {
+          return response.status(404).json({ message: 'No data found.' });
+        }
+
+        return response.status(200).json({ tasks });
+      }
+      case 'user': {
+        const tasks: Task[] = await database.query.tasks.findMany({
+          where: ({ userId: taskUserId }) => eq(taskUserId, userId),
+        });
+
+        if (!tasks.length) {
+          return response.status(404).json({ message: 'No data found.' });
+        }
+
+        return response.status(200).json({ tasks });
+      }
+      default: {
+        return response.status(400).json({ message: 'Token is corrupted' });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ message: 'Internal Server Error' });
+  }
 }
 
 // POST
@@ -64,25 +127,35 @@ export async function post(
   response: Response<PostResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
-  const task = { ...request.body, userId, created_at: Date.now(), updated_at: Date.now() };
+  const task = {
+    title: request.body.title,
+    description: request.body.description,
+    priority: request.body.priority,
+    due_date: request.body.due_date,
+    userId,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+  };
 
-  const databaseResponse = await database
-    .insert(tasks)
-    .values(task)
-    .returning({ id: tasks.id })
-    .catch((error) => {
-      throw new Error(error);
-    });
+  try {
+    const databaseResponse = await database
+      .insert(tasks)
+      .values(task)
+      .returning({ id: tasks.id });
 
-  response.status(201).json({ id: databaseResponse[0].id });
+    response.status(201).json({ id: databaseResponse[0].id });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ message: 'Internal Server Error' });
+  }
 }
 
 // PATCH
 type PatchBody = {
-  title: string;
-  description: string | null;
-  priority: 'low' | 'medium' | 'high' | null;
-  due_date: number | null;
+  title?: string;
+  description?: string | null;
+  priority?: 'low' | 'medium' | 'high' | null;
+  due_date?: number | null;
 } & Id;
 
 type PatchResponseBody = PatchBody;
@@ -99,18 +172,23 @@ export async function patch(
   response: Response<PatchResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
-  const task = { ...request.body, userId: userId, updated_at: Date.now() };
+  const task = {
+    ...request.body,
+    updated_at: Date.now(),
+  };
 
-  const [{ id, title, description, priority, due_date }] = await database
-    .update(tasks)
-    .set(task)
-    .where(and(eq(tasks.id, task.id), eq(tasks.userId, userId)))
-    .returning()
-    .catch((error) => {
-      throw new Error(error);
-    });
+  try {
+    const [{ id, title, description, priority, due_date }] = await database
+      .update(tasks)
+      .set(task)
+      .where(and(eq(tasks.id, task.id), eq(tasks.userId, userId)))
+      .returning();
 
-  response.status(201).json({ id, title, description, priority, due_date });
+    response.status(200).json({ id, title, description, priority, due_date });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ message: 'Internal Server Error' });
+  }
 }
 
 // DELETE
@@ -134,13 +212,15 @@ export async function deleteTask(
     return response.status(400).json({ message: 'Missing task id' });
   }
 
-  const [body] = await database
-    .delete(tasks)
-    .where(and(eq(tasks.userId, userId), eq(tasks.id, id)))
-    .returning({ id: tasks.id })
-    .catch((error) => {
-      throw new Error(error);
-    });
+  try {
+    const [body] = await database
+      .delete(tasks)
+      .where(and(eq(tasks.userId, userId), eq(tasks.id, id)))
+      .returning({ id: tasks.id });
 
-  response.status(200).json(body);
+    response.status(200).json(body);
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ message: 'Internal Server Error' });
+  }
 }
