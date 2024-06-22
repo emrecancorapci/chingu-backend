@@ -1,31 +1,32 @@
+import { Request, Response, NextFunction } from 'express';
+import Jwt from 'jsonwebtoken';
 import database from '@/config/database/drizzle.ts';
 import { AuthToken } from '@/types.ts';
-import { NextFunction, Request, Response, response } from 'express';
-import Jwt from 'jsonwebtoken';
 
 export default async function authenticationMiddleware(
-  req: Request<unknown, unknown, unknown, unknown, { user: AuthToken }>,
-  _: Response,
+  req: Request,
+  res: Response,
   next: NextFunction
 ) {
   const { authorization } = req.headers;
 
-  if (!authorization || !authorization.startsWith('Bearer')) {
-    throw new Error('No token provided.');
+  if (!authorization || !authorization.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'No token provided or malformed token.' });
   }
+
   const token = authorization.split(' ')[1];
 
   try {
     const JWT_SECRET = process.env.JWT_SECRET;
 
     if (!JWT_SECRET) {
-      throw new Error('JWT_SECRET is not defined');
+      return res.status(500).json({ message: 'JWT_SECRET is not defined.' });
     }
 
     const { id, username, role } = Jwt.verify(token, JWT_SECRET) as AuthToken;
 
     if (!id || !username || !role) {
-      throw new Error('Not authorized. AuthToken is invalid.');
+      return res.status(401).json({ message: 'Not authorized. Invalid token.' });
     }
 
     const serverUser = await database.query.users.findFirst({
@@ -34,15 +35,18 @@ export default async function authenticationMiddleware(
     });
 
     if (!serverUser) {
-      throw new Error('Not authorized. User not found.');
+      return res.status(401).json({ message: 'Not authorized. User not found.' });
     }
 
-    response.locals = { id, username, role };
-
+    res.locals.user = { id, username, role };
     next();
   } catch (err) {
-    if (err instanceof Error) {
-      throw new Error(err.message);
+    if (err instanceof Jwt.JsonWebTokenError) {
+      return res.status(401).json({ message: 'Not authorized. Invalid token.' });
     }
+    if (err instanceof Error) {
+      return res.status(500).json({ message: err.message });
+    }
+    next(err);
   }
 }
