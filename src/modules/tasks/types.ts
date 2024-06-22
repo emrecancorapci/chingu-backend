@@ -8,7 +8,3 @@ export interface TaskBody {
   created_at: number;
   updated_at: number;
 }
-
-export interface WithId {
-  id: string;
-}

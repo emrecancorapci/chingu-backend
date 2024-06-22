@@ -1,19 +1,25 @@
 import database from '@/config/database/drizzle.ts';
-import { AuthToken, ErrorResponse } from '@/types.ts';
+import { AuthToken, ErrorResponse, Id, TableDate } from '@/types.ts';
 import { Request, Response } from 'express';
-import { TaskBody, WithId } from './types.ts';
+import { TaskBody } from './types.ts';
 import { tasks } from '@/config/database/schema.ts';
 import { and, eq } from 'drizzle-orm';
 
 type Locals = { user: AuthToken };
 
 // GET
-type Task = TaskBody & WithId;
+type Task = TaskBody & TableDate & Id;
 type GetParameters = { id?: string };
 type GetResponseBody = { tasks: Task[] };
 
 export async function get(
-  request: Request<GetParameters, GetResponseBody | ErrorResponse, void, void, Locals>,
+  request: Request<
+    GetParameters,
+    GetResponseBody | ErrorResponse,
+    void, // Request Body
+    void, // Request Query
+    Locals
+  >,
   response: Response<GetResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
@@ -48,7 +54,13 @@ type PostRequestBody = {
 };
 
 export async function post(
-  request: Request<void, PostResponseBody | ErrorResponse, PostRequestBody, void, Locals>,
+  request: Request<
+    void, // Request Parameters
+    PostResponseBody | ErrorResponse,
+    PostRequestBody,
+    void, // Request Query
+    Locals
+  >,
   response: Response<PostResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
@@ -71,13 +83,19 @@ type PatchBody = {
   description: string | null;
   priority: 'low' | 'medium' | 'high' | null;
   due_date: number | null;
-} & WithId;
+} & Id;
 
 type PatchResponseBody = PatchBody;
 type PatchRequestBody = PatchBody;
 
 export async function patch(
-  request: Request<void, PatchResponseBody | ErrorResponse, PatchRequestBody, void, Locals>,
+  request: Request<
+    void, // Request Parameters
+    PatchResponseBody | ErrorResponse,
+    PatchRequestBody,
+    void, // Request Query
+    Locals
+  >,
   response: Response<PatchResponseBody | ErrorResponse>
 ) {
   const { userId } = response.locals;
@@ -103,8 +121,8 @@ export async function deleteTask(
   request: Request<
     DeleteParameters,
     DeleteResponseBody | ErrorResponse,
-    void,
-    void,
+    void, // Request body
+    void, // Query string
     Locals
   >,
   response: Response<DeleteResponseBody | ErrorResponse>
