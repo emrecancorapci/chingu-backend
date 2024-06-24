@@ -9,7 +9,6 @@ export default class CustomAPIError extends Error {
 /**
  * 400 Bad Request
  */
-
 export class BadRequestError extends CustomAPIError {
   statusCode;
 
@@ -18,7 +17,6 @@ export class BadRequestError extends CustomAPIError {
     this.statusCode = StatusCodes.BAD_REQUEST;
   }
 }
-
 
 /**
  * 401 Unauthorized
@@ -59,7 +57,6 @@ export class NoDataFoundError extends CustomAPIError {
 /**
  * 409 Conflict
  */
-
 export class ConflictError extends CustomAPIError {
   statusCode;
 

@@ -1,7 +1,6 @@
 import database from '@/config/database/drizzle.ts';
-import { Id, RequestParams, TableDate } from '@/types.ts';
+import { RequestParams } from '@/types.ts';
 import { Request, Response } from 'express';
-import { TaskBody } from './types.ts';
 import { tasks } from '@/config/database/schema.ts';
 import { and, eq } from 'drizzle-orm';
 import {
@@ -9,11 +8,14 @@ import {
   InternalServerError,
   NoDataFoundError,
 } from '@/middlewares/error/base.ts';
+import { z } from 'zod';
+import { HasDates, HasId, TaskBody } from './zod.ts';
 
-type Task = TaskBody & TableDate & Id;
+const TaskFull = TaskBody.merge(HasId).merge(HasDates);
+type TaskResponse = z.infer<typeof TaskFull>;
 
 // GET
-type GetResponseBody = { task: Task };
+type GetResponseBody = { task: TaskResponse };
 
 export async function get(request: Request, response: Response<GetResponseBody>) {
   const { id: userId, role } = response.locals;
@@ -23,7 +25,7 @@ export async function get(request: Request, response: Response<GetResponseBody>)
     throw new InternalServerError();
   }
 
-  let task: Task | undefined;
+  let task: TaskResponse | undefined;
 
   switch (role) {
     case 'admin': {
@@ -51,7 +53,7 @@ export async function get(request: Request, response: Response<GetResponseBody>)
 }
 
 // GET ALL
-type GetAllResponseBody = { tasks: Task[] };
+type GetAllResponseBody = { tasks: TaskResponse[] };
 
 export async function getAll(_: Request, response: Response<GetAllResponseBody>) {
   const { id: userId, role } = response.locals;
@@ -60,7 +62,7 @@ export async function getAll(_: Request, response: Response<GetAllResponseBody>)
     throw new InternalServerError();
   }
 
-  let tasks: Task[] | undefined;
+  let tasks: TaskResponse[] | undefined;
 
   switch (role) {
     case 'admin': {
@@ -77,7 +79,8 @@ export async function getAll(_: Request, response: Response<GetAllResponseBody>)
       throw new BadRequestError('Token is corrupted');
     }
   }
-  if (!tasks.length) {
+
+  if (tasks.length === 0) {
     throw new NoDataFoundError();
   }
 
@@ -86,12 +89,7 @@ export async function getAll(_: Request, response: Response<GetAllResponseBody>)
 
 // POST
 type PostResponseBody = { id: string };
-type PostRequestBody = {
-  title: string;
-  description: string | null;
-  priority: 'low' | 'medium' | 'high' | null;
-  due_date: number | null;
-};
+type PostRequestBody = z.infer<typeof TaskBody>;
 
 export async function post(
   request: Request<RequestParams, PostResponseBody, PostRequestBody>,
@@ -103,17 +101,15 @@ export async function post(
     throw new InternalServerError();
   }
 
-  const task = {
-    title: request.body.title,
-    description: request.body.description,
-    priority: request.body.priority,
-    due_date: request.body.due_date,
-    user_id: userId,
-    created_at: Date.now(),
-    updated_at: Date.now(),
-  };
+  const task = await TaskBody.parseAsync(request.body);
 
-  const [insertedTask] = await database.insert(tasks).values(task).returning({ id: tasks.id });
+  const [insertedTask] = await database
+    .insert(tasks)
+    .values(task)
+    .returning({ id: tasks.id })
+    .catch((error) => {
+      throw new Error(error);
+    });
 
   if (!insertedTask) {
     throw new InternalServerError();
@@ -123,14 +119,8 @@ export async function post(
 }
 
 // PATCH
-type PatchBody = {
-  title?: string;
-  description?: string | null;
-  priority?: 'low' | 'medium' | 'high' | null;
-  due_date?: number | null;
-  completed_at?: number | null;
-} & Id;
-
+const TaskWithId = TaskBody.partial().merge(HasId);
+type PatchBody = z.infer<typeof TaskWithId>;
 type PatchResponseBody = PatchBody;
 type PatchRequestBody = PatchBody;
 
@@ -144,15 +134,12 @@ export async function patch(
     throw new InternalServerError();
   }
 
-  const task = {
-    ...request.body,
-    updated_at: Date.now(),
-  };
+  const newTask = await TaskWithId.parseAsync(request.body);
 
   const [updatedTask] = await database
     .update(tasks)
-    .set(task)
-    .where(and(eq(tasks.id, task.id), eq(tasks.user_id, userId)))
+    .set(newTask)
+    .where(and(eq(tasks.id, newTask.id), eq(tasks.user_id, userId)))
     .returning();
 
   if (!updatedTask) {
@@ -179,9 +166,11 @@ export async function deleteTask(request: Request, response: Response<DeleteResp
     throw new BadRequestError('No id parameter');
   }
 
+  const taskId = z.string().length(40).parse(id);
+
   const [body] = await database
     .delete(tasks)
-    .where(and(eq(tasks.user_id, userId), eq(tasks.id, id)))
+    .where(and(eq(tasks.user_id, userId), eq(tasks.id, taskId)))
     .returning({ id: tasks.id });
 
   if (!body) {

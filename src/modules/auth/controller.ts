@@ -64,11 +64,7 @@ type RegisterRequestBody = {
 type RegisterResponseBody = { id: string; token: string };
 
 export async function register(
-  request: Request<
-    RequestParams,
-    RegisterResponseBody,
-    RegisterRequestBody
-  >,
+  request: Request<RequestParams, RegisterResponseBody, RegisterRequestBody>,
   response: Response<RegisterResponseBody>,
   next: NextFunction
 ) {
