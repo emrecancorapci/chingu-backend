@@ -1,5 +1,5 @@
 import database from '@/config/database/drizzle.ts';
-import { ErrorResponse, TableDate } from '@/types.ts';
+import { RequestParams, TableDate } from '@/types.ts';
 import { NextFunction, Request, Response } from 'express';
 import { users } from '@/config/database/schema.ts';
 import * as argon2 from 'argon2';
@@ -14,18 +14,14 @@ type LoginRequestBody = { email: string; password: string };
 type LoginResponseBody = { token: string };
 
 export async function login(
-  request: Request<
-    void, // Request Parameters
-    LoginResponseBody | ErrorResponse,
-    LoginRequestBody
-  >,
-  response: Response<LoginResponseBody | ErrorResponse>,
+  request: Request<RequestParams, LoginResponseBody, LoginRequestBody>,
+  response: Response<LoginResponseBody>,
   next: NextFunction
 ) {
   const secret = process.env.JWT_SECRET;
 
   if (!secret) {
-    return response.status(500).json({ message: 'JWT_SECRET is not defined.' });
+    throw new InternalServerError('JWT_SECRET is not defined.');
   }
 
   try {
@@ -69,11 +65,11 @@ type RegisterResponseBody = { id: string; token: string };
 
 export async function register(
   request: Request<
-    void, // Request Parameters
-    RegisterResponseBody | ErrorResponse,
+    RequestParams,
+    RegisterResponseBody,
     RegisterRequestBody
   >,
-  response: Response<RegisterResponseBody | ErrorResponse>,
+  response: Response<RegisterResponseBody>,
   next: NextFunction
 ) {
   const secret = process.env.JWT_SECRET;

@@ -1,7 +1,3 @@
-export interface ErrorResponse {
-  message: string;
-}
-
 export interface JwtPayload {
   id: string;
   username: string;
@@ -17,6 +13,6 @@ export interface TableDate {
   updated_at: number;
 }
 
-export interface AuthLocal {
-  user: JwtPayload;
+export interface RequestParams {
+  [key: string]: string;
 }

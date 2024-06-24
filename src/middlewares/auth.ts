@@ -39,7 +39,7 @@ export default async function authenticationMiddleware(
       throw new UnauthorizedError('User not found');
     }
 
-    res.locals.user = { id, username, role };
+    res.locals = { id, username, role };
     next();
   } catch (err) {
     if (err instanceof Jwt.JsonWebTokenError) {
