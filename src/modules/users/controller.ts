@@ -161,13 +161,9 @@ export async function patch(
 }
 
 // DELETE
-type DeleteParameters = { id: string };
 type DeleteResponseBody = { id: string };
 
-export async function _delete(
-  request: Request<DeleteParameters>,
-  response: Response<DeleteResponseBody>
-) {
+export async function _delete(request: Request, response: Response<DeleteResponseBody>) {
   const { id: userId, role } = response.locals;
   const { id } = request.params;
 

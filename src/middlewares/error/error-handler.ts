@@ -1,7 +1,6 @@
 import { StatusCodes } from 'http-status-codes';
 import CustomAPIError from './base.ts';
 import { NextFunction, Request, Response } from 'express';
-import { PostgresError } from 'postgres';
 
 interface CustomError extends Error {
   statusCode: number;
@@ -16,7 +15,7 @@ export default (
   if (err instanceof CustomAPIError)
     return res.status(err.statusCode).json({ message: err.message });
 
-  if (err instanceof PostgresError) {
+  if ('code' in err) {
     if (err.code === '22P02') {
       return res.status(400).json({ message: 'Invalid id' });
     }
