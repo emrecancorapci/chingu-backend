@@ -12,4 +12,5 @@ http
   .listen(NODE_PORT)
   .on('listening', () => {
     console.log(`Server is running on http://localhost:${NODE_PORT}`);
+    console.log(`Swagger docs: http://localhost:${NODE_PORT}/api-docs/`);
   });

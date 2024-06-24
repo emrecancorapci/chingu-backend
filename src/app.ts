@@ -10,6 +10,8 @@ import cors from 'cors';
 
 import apiDocs from './api-docs.json';
 import { router } from './routes.ts';
+import notFound from './middlewares/not-found.ts';
+import errorHandler from './middlewares/error/error-handler.ts';
 
 dotenv.config();
 
@@ -33,5 +35,8 @@ app.use(morgan(NODE_ENV));
 
 app.use('/api', router);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(apiDocs));
+
+app.use(notFound);
+app.use(errorHandler);
 
 export default app;
