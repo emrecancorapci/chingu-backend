@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import Jwt from 'jsonwebtoken';
 import database from '@/config/database/drizzle.ts';
-import { AuthToken } from '@/types.ts';
+import { JwtPayload } from '@/types.ts';
+import { InternalServerError, UnauthorizedError } from './error/base.ts';
 
 export default async function authenticationMiddleware(
   req: Request,
@@ -20,13 +21,13 @@ export default async function authenticationMiddleware(
     const JWT_SECRET = process.env.JWT_SECRET;
 
     if (!JWT_SECRET) {
-      return res.status(500).json({ message: 'JWT_SECRET is not defined.' });
+      throw new InternalServerError();
     }
 
-    const { id, username, role } = Jwt.verify(token, JWT_SECRET) as AuthToken;
+    const { id, username, role } = Jwt.verify(token, JWT_SECRET) as JwtPayload;
 
     if (!id || !username || !role) {
-      return res.status(401).json({ message: 'Not authorized. Invalid token.' });
+      throw new UnauthorizedError('Invalid token');
     }
 
     const serverUser = await database.query.users.findFirst({
@@ -35,17 +36,17 @@ export default async function authenticationMiddleware(
     });
 
     if (!serverUser) {
-      return res.status(401).json({ message: 'Not authorized. User not found.' });
+      throw new UnauthorizedError('User not found');
     }
 
     res.locals.user = { id, username, role };
     next();
   } catch (err) {
     if (err instanceof Jwt.JsonWebTokenError) {
-      return res.status(401).json({ message: 'Not authorized. Invalid token.' });
+      throw new UnauthorizedError('Invalid token.');
     }
     if (err instanceof Error) {
-      return res.status(500).json({ message: err.message });
+      throw new InternalServerError(err.message);
     }
     next(err);
   }

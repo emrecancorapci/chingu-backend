@@ -1,11 +1,14 @@
 import database from '@/config/database/drizzle.ts';
-import { AuthToken, ErrorResponse, Id, TableDate } from '@/types.ts';
-import { Request, Response } from 'express';
+import { ErrorResponse, Id, TableDate, AuthLocal } from '@/types.ts';
+import { NextFunction, Request, Response } from 'express';
 import { TaskBody } from './types.ts';
 import { tasks } from '@/config/database/schema.ts';
 import { and, eq } from 'drizzle-orm';
-
-type Locals = { user: AuthToken };
+import {
+  BadRequestError,
+  InternalServerError,
+  NoDataFoundError,
+} from '@/middlewares/error/base.ts';
 
 // GET
 type Task = TaskBody & TableDate & Id;
@@ -14,44 +17,42 @@ type GetResponseBody = { task: Task };
 
 export async function get(
   request: Request<GetParameters>,
-  response: Response<GetResponseBody | ErrorResponse, Locals>
+  response: Response<GetResponseBody | ErrorResponse, AuthLocal>,
+  next: NextFunction
 ) {
   const {
     user: { id: userId, role },
   } = response.locals;
   const { id: taskId } = request.params;
 
+  let task: Task | undefined;
+
   try {
     switch (role) {
       case 'admin': {
-        const task: Task | undefined = await database.query.tasks.findFirst({
+        task = await database.query.tasks.findFirst({
           where: ({ id }) => eq(id, taskId),
         });
-
-        if (!task) {
-          return response.status(404).json({ message: 'No data found.' });
-        }
-
-        return response.status(200).json({ task });
+        break;
       }
       case 'user': {
-        const task: Task | undefined = await database.query.tasks.findFirst({
+        task = await database.query.tasks.findFirst({
           where: ({ id: task_id, user_id }) => and(eq(user_id, userId), eq(task_id, taskId)),
         });
-
-        if (!task) {
-          return response.status(404).json({ message: 'No data found.' });
-        }
-
-        return response.status(200).json({ task });
+        break;
       }
       default: {
-        return response.status(400).json({ message: 'Token is corrupted' });
+        throw new BadRequestError('Token is corrupted');
       }
     }
+
+    if (!task) {
+      throw new NoDataFoundError();
+    }
+
+    return response.status(200).json({ task });
   } catch (error) {
-    console.error(error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    next(error);
   }
 }
 
@@ -60,41 +61,38 @@ type GetAllResponseBody = { tasks: Task[] };
 
 export async function getAll(
   _: Request,
-  response: Response<GetAllResponseBody | ErrorResponse, Locals>
+  response: Response<GetAllResponseBody | ErrorResponse, AuthLocal>,
+  next: NextFunction
 ) {
   const {
     user: { id: userId, role },
   } = response.locals;
 
+  let tasks: Task[] | undefined;
+
   try {
     switch (role) {
       case 'admin': {
-        const tasks: Task[] = await database.query.tasks.findMany();
-
-        if (!tasks.length) {
-          return response.status(404).json({ message: 'No data found.' });
-        }
-
-        return response.status(200).json({ tasks });
+        tasks = await database.query.tasks.findMany();
+        break;
       }
       case 'user': {
-        const tasks: Task[] = await database.query.tasks.findMany({
+        tasks = await database.query.tasks.findMany({
           where: ({ user_id }) => eq(user_id, userId),
         });
-
-        if (!tasks.length) {
-          return response.status(404).json({ message: 'No data found.' });
-        }
-
-        return response.status(200).json({ tasks });
+        break;
       }
       default: {
-        return response.status(400).json({ message: 'Token is corrupted' });
+        throw new BadRequestError('Token is corrupted');
       }
     }
+    if (!tasks.length) {
+      throw new NoDataFoundError();
+    }
+
+    return response.status(200).json({ tasks });
   } catch (error) {
-    console.error(error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    next(error);
   }
 }
 
@@ -113,7 +111,8 @@ export async function post(
     PostResponseBody | ErrorResponse,
     PostRequestBody
   >,
-  response: Response<PostResponseBody | ErrorResponse, Locals>
+  response: Response<PostResponseBody | ErrorResponse, AuthLocal>,
+  next: NextFunction
 ) {
   const {
     user: { id: userId },
@@ -129,12 +128,15 @@ export async function post(
   };
 
   try {
-    const [newTask] = await database.insert(tasks).values(task).returning({ id: tasks.id });
+    const [insertedTask] = await database.insert(tasks).values(task).returning({ id: tasks.id });
 
-    response.status(201).json({ id: newTask.id });
+    if (!insertedTask) {
+      throw new InternalServerError();
+    }
+
+    response.status(201).json({ id: insertedTask.id });
   } catch (error) {
-    console.error(error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    next(error);
   }
 }
 
@@ -156,7 +158,8 @@ export async function patch(
     PatchResponseBody | ErrorResponse,
     PatchRequestBody
   >,
-  response: Response<PatchResponseBody | ErrorResponse, Locals>
+  response: Response<PatchResponseBody | ErrorResponse, AuthLocal>,
+  next: NextFunction
 ) {
   const {
     user: { id: userId },
@@ -167,16 +170,21 @@ export async function patch(
   };
 
   try {
-    const [{ id, title, description, priority, due_date, completed_at }] = await database
+    const [updatedTask] = await database
       .update(tasks)
       .set(task)
       .where(and(eq(tasks.id, task.id), eq(tasks.user_id, userId)))
       .returning();
 
+    if (!updatedTask) {
+      throw new InternalServerError();
+    }
+
+    const { id, title, description, priority, due_date, completed_at } = updatedTask;
+
     response.status(200).json({ id, title, description, priority, due_date, completed_at });
   } catch (error) {
-    console.error(error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    next(error);
   }
 }
 
@@ -186,7 +194,8 @@ type DeleteResponseBody = { id: string };
 
 export async function deleteTask(
   request: Request<DeleteParameters>,
-  response: Response<DeleteResponseBody | ErrorResponse, Locals>
+  response: Response<DeleteResponseBody | ErrorResponse, AuthLocal>,
+  next: NextFunction
 ) {
   const {
     user: { id: userId },
@@ -194,7 +203,7 @@ export async function deleteTask(
   const { id } = request.params;
 
   if (!id) {
-    return response.status(400).json({ message: 'Missing task id' });
+    throw new BadRequestError('No id parameter');
   }
 
   try {
@@ -204,12 +213,11 @@ export async function deleteTask(
       .returning({ id: tasks.id });
 
     if (!body) {
-      return response.status(404).json({ message: 'No data found.' });
+      throw new NoDataFoundError();
     }
 
     response.status(200).json(body);
   } catch (error) {
-    console.error(error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    next(error);
   }
 }

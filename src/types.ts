@@ -2,7 +2,7 @@ export interface ErrorResponse {
   message: string;
 }
 
-export interface AuthToken {
+export interface JwtPayload {
   id: string;
   username: string;
   role: 'admin' | 'user';
@@ -15,4 +15,8 @@ export interface Id {
 export interface TableDate {
   created_at: number;
   updated_at: number;
+}
+
+export interface AuthLocal {
+  user: JwtPayload;
 }
