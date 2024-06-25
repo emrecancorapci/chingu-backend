@@ -1,10 +1,11 @@
-import database from '@/config/database/drizzle.ts';
-import { Id, RequestParams, TableDate } from '@/types.ts';
 import { Request, Response } from 'express';
-import { UserBody } from './types.ts';
-import { users } from '@/config/database/schema.ts';
 import * as argon2 from 'argon2';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+
+import { RequestParams } from '@/types.ts';
+import database from '@/config/database/drizzle.ts';
+import { users } from '@/config/database/schema.ts';
 import {
   BadRequestError,
   ForbiddenError,
@@ -12,72 +13,72 @@ import {
   NoDataFoundError,
 } from '@/middlewares/error/base.ts';
 
+import { UserGetResponse, UserPatchRequest, UserPatchResponse, UserPostRequest } from './zod.ts';
+
 // GET
-type User = UserBody & Id & TableDate;
-type GetResponseBody = { user: User };
+type GetResponse = z.infer<typeof UserGetResponse>;
+type GetResponseBody = { user: GetResponse };
 
 export async function get(request: Request, response: Response<GetResponseBody>) {
   const { id: userId, role } = response.locals;
   const { id: queriedId } = request.params;
 
-  if (typeof userId !== 'string' || typeof role !== 'string') {
-    throw new InternalServerError();
-  }
+  if (typeof userId !== 'string' || typeof role !== 'string') throw new InternalServerError();
+  if (role !== 'admin' && userId !== queriedId) throw new ForbiddenError();
 
-  if (role !== 'admin' && userId !== queriedId) {
-    throw new ForbiddenError();
-  }
+  const [user]: GetResponse[] | undefined = await database
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      role: users.role,
+      created_at: users.created_at,
+      updated_at: users.updated_at,
+    })
+    .from(users)
+    .where(eq(users.id, queriedId));
 
-  const user: User | undefined = await database.query.users.findFirst({
-    where: ({ id }) => eq(id, queriedId),
-  });
+  if (!user) throw new NoDataFoundError();
 
-  if (!user) {
-    throw new NoDataFoundError();
-  }
   return response.status(200).json({ user });
 }
 
 // GET ALL
-type GetAllResponseBody = { users: User[] };
+type GetAllResponseBody = { users: GetResponse[] };
 
 export async function getAll(_: Request, response: Response<GetAllResponseBody>) {
   const { role } = response.locals;
 
-  if (role !== 'admin') {
-    throw new ForbiddenError();
-  }
+  if (role !== 'admin') throw new ForbiddenError();
 
-  const users: User[] = await database.query.users.findMany();
+  const usersResponse: GetResponse[] = await database
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      role: users.role,
+      created_at: users.created_at,
+      updated_at: users.updated_at,
+    })
+    .from(users);
 
-  if (users.length === 0) {
-    throw new NoDataFoundError();
-  }
-  return response.status(200).json({ users });
+  if (usersResponse.length === 0) throw new NoDataFoundError();
+
+  return response.status(200).json({ users: usersResponse });
 }
 
 // POST
 type PostResponseBody = { id: string };
-type PostRequestBody = {
-  email: string;
-  password: string;
-  username: string;
-};
+type PostRequestBody = z.infer<typeof UserPostRequest>;
 
 export async function post(
   request: Request<RequestParams, PostResponseBody, PostRequestBody>,
   response: Response<PostResponseBody>
 ) {
-  if (response.locals.user.role !== 'admin') {
-    throw new ForbiddenError();
-  }
-  if (!request.body.password) {
-    throw new BadRequestError('No password provided');
-  }
-
-  if (request.body.password.length < 0) {
+  if (response.locals.user.role !== 'admin') throw new ForbiddenError();
+  if (!request.body.password) throw new BadRequestError('No password provided');
+  if (request.body.password.length < 0)
     throw new BadRequestError('Password should be longer than 8 characters');
-  }
 
   const hashed = await argon2.hash(request.body.password).catch((err) => {
     if (err instanceof Error) {
@@ -89,13 +90,10 @@ export async function post(
     throw new InternalServerError('Error occured while hashing');
   }
 
-  const user: UserBody & TableDate = {
+  const user = {
     email: request.body.email,
     username: request.body.username,
     password: hashed,
-    role: 'user',
-    created_at: Date.now(),
-    updated_at: Date.now(),
   };
 
   const [data] = await database.insert(users).values(user).returning({ id: users.id });
@@ -104,14 +102,8 @@ export async function post(
 }
 
 // PATCH
-type PatchBody = {
-  email?: string;
-  username?: string;
-  password?: string;
-} & Id;
-
-type PatchResponseBody = PatchBody;
-type PatchRequestBody = PatchBody;
+type PatchResponseBody = z.infer<typeof UserPatchResponse>;
+type PatchRequestBody = z.infer<typeof UserPatchRequest>;
 
 export async function patch(
   request: Request<RequestParams, PatchResponseBody, PatchRequestBody>,
@@ -120,35 +112,27 @@ export async function patch(
   const { id: userId, role } = response.locals;
   const { id: requestedId } = request.body;
 
-  if (typeof userId !== 'string' || typeof role !== 'string') {
-    throw new InternalServerError();
-  }
+  if (userId !== requestedId && role !== 'admin') throw new ForbiddenError();
 
-  if (userId !== requestedId && role !== 'admin') {
-    throw new ForbiddenError();
-  }
-  if (!request.body.password) {
-    throw new BadRequestError('No password provided');
-  }
+  const patchUser = UserPatchRequest.parse(request.body);
 
-  if (request.body.password.length < 0) {
-    throw new BadRequestError('Password should be longer than 8 characters');
-  }
+  let hashed;
+  if (patchUser.password) {
+    hashed = await argon2.hash(patchUser.password).catch((err) => {
+      if (err instanceof Error) {
+        throw new InternalServerError(err.message);
+      }
+    });
 
-  const hashed = await argon2.hash(request.body.password).catch((err) => {
-    if (err instanceof Error) {
-      throw new InternalServerError(err.message);
+    if (!hashed) {
+      throw new InternalServerError('Error occured while hashing');
     }
-  });
-
-  if (!hashed) {
-    throw new InternalServerError('Error occured while hashing');
   }
 
   const updateData = {
-    ...request.body,
+    username: patchUser.username,
+    email: patchUser.email,
     password: hashed,
-    updated_at: Date.now(),
   };
 
   const [{ id, email, username }] = await database
@@ -167,16 +151,12 @@ export async function _delete(request: Request, response: Response<DeleteRespons
   const { id: userId, role } = response.locals;
   const { id } = request.params;
 
-  if (typeof userId !== 'string' || typeof role !== 'string') {
-    throw new InternalServerError();
-  }
-
   if (userId !== id && role !== 'admin') {
     throw new ForbiddenError();
   }
 
-  if (!id) {
-    throw new BadRequestError('Missing id parameter');
+  if (!id && id.length < 32) {
+    throw new BadRequestError('Invalid id parameter');
   }
 
   const [body] = await database.delete(users).where(eq(users.id, id)).returning({ id: users.id });
