@@ -10,7 +10,7 @@ export const users = schema.table('user', {
   email: varchar('email', { length: 128 }).notNull(),
   username: varchar('username', { length: 128 }).notNull(),
   password: varchar('password', { length: 128 }).notNull(),
-  role: userRole('role').notNull(),
+  role: userRole('role').default('user').notNull(),
   created_at: bigint('created_at', { mode: 'number' })
     .notNull()
     .$defaultFn(() => Date.now()),
