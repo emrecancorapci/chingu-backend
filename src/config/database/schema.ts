@@ -1,10 +1,9 @@
 import { relations } from 'drizzle-orm';
-import { bigint, pgSchema, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, pgSchema, smallserial, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const schema = pgSchema('task_manager');
 
 export const userRole = schema.enum('role', ['admin', 'user']);
-
 export const users = schema.table('user', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 128 }).notNull(),
@@ -20,16 +19,16 @@ export const users = schema.table('user', {
     .$onUpdateFn(() => Date.now()),
 });
 
+export const userRelations = relations(users, ({ many }) => ({
+  projects: many(projects),
+}));
+
 export const priority = schema.enum('priority', ['low', 'medium', 'high']);
 export const status = schema.enum('status', ['todo', 'working', 'finished']);
-
 export const tasks = schema.table('task', {
   id: uuid('id').defaultRandom().primaryKey(),
-  user_id: uuid('user_id')
-    .references(() => users.id)
-    .notNull(),
   project_id: uuid('project_id')
-    .references(() => projects.id)
+    .references(() => projects.id, { onDelete: 'cascade' })
     .notNull(),
   title: varchar('title', { length: 128 }).notNull(),
   description: varchar('description'),
@@ -46,7 +45,7 @@ export const tasks = schema.table('task', {
     .$onUpdateFn(() => Date.now()),
 });
 
-export const tasksRelations = relations(tasks, ({ one }) => ({
+export const taskRelations = relations(tasks, ({ one }) => ({
   project: one(projects, {
     fields: [tasks.project_id],
     references: [projects.id],
@@ -56,7 +55,7 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 export const projects = schema.table('project', {
   id: uuid('id').defaultRandom().primaryKey(),
   user_id: uuid('user_id')
-    .references(() => users.id)
+    .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
   name: varchar('name', { length: 128 }).notNull(),
   description: varchar('description'),
@@ -69,6 +68,10 @@ export const projects = schema.table('project', {
     .$onUpdateFn(() => Date.now()),
 });
 
-export const projectRelations = relations(projects, ({ many }) => ({
+export const projectRelations = relations(projects, ({ many, one }) => ({
   tasks: many(tasks),
+  user: one(users, {
+    fields: [projects.user_id],
+    references: [users.id],
+  }),
 }));
