@@ -1,6 +1,6 @@
-import { uuid } from '@/config/zod-prim.ts';
 import { z } from 'zod';
 
+const id = z.string().uuid();
 const email = z.string().email();
 const username = z.string().min(3).max(128);
 const password = z
@@ -11,7 +11,7 @@ const password = z
 const role = z.enum(['admin', 'user']);
 
 export const UserGetResponse = z.object({
-  id: uuid,
+  id,
   email,
   username,
   role,
@@ -26,14 +26,14 @@ export const UserPostRequest = z.object({
 });
 
 export const UserPatchRequest = z.object({
-  id: uuid,
+  id,
   email: email.optional(),
   username: username.optional(),
   password: password.optional(),
 });
 
 export const UserPatchResponse = z.object({
-  id: uuid,
+  id,
   email,
   username,
 });

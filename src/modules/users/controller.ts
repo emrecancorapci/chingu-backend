@@ -6,12 +6,7 @@ import { z } from 'zod';
 import { RequestParams } from '@/types.ts';
 import database from '@/config/database/drizzle.ts';
 import { users } from '@/config/database/schema.ts';
-import {
-  BadRequestError,
-  ForbiddenError,
-  InternalServerError,
-  NoDataFoundError,
-} from '@/middlewares/error/base.ts';
+import { ForbiddenError, InternalServerError, NoDataFoundError } from '@/middlewares/error/base.ts';
 
 import { UserGetResponse, UserPatchRequest, UserPatchResponse, UserPostRequest } from './zod.ts';
 
@@ -76,11 +71,10 @@ export async function post(
   response: Response<PostResponseBody>
 ) {
   if (response.locals.user.role !== 'admin') throw new ForbiddenError();
-  if (!request.body.password) throw new BadRequestError('No password provided');
-  if (request.body.password.length < 0)
-    throw new BadRequestError('Password should be longer than 8 characters');
 
-  const hashed = await argon2.hash(request.body.password).catch((err) => {
+  const parsed = await UserPostRequest.parseAsync(request.body);
+
+  const hashed = await argon2.hash(parsed.password).catch((err) => {
     if (err instanceof Error) {
       throw new InternalServerError(err.message);
     }
@@ -91,14 +85,14 @@ export async function post(
   }
 
   const user = {
-    email: request.body.email,
-    username: request.body.username,
+    email: parsed.email,
+    username: parsed.username,
     password: hashed,
   };
 
   const [data] = await database.insert(users).values(user).returning({ id: users.id });
 
-  return response.status(201).json({ id: data.id });
+  return response.status(201).json(data);
 }
 
 // PATCH
@@ -114,11 +108,10 @@ export async function patch(
 
   if (userId !== requestedId && role !== 'admin') throw new ForbiddenError();
 
-  const patchUser = UserPatchRequest.parse(request.body);
+  let user = await UserPatchRequest.parseAsync(request.body);
 
-  let hashed;
-  if (patchUser.password) {
-    hashed = await argon2.hash(patchUser.password).catch((err) => {
+  if (user.password) {
+    const hashed = await argon2.hash(user.password).catch((err) => {
       if (err instanceof Error) {
         throw new InternalServerError(err.message);
       }
@@ -127,21 +120,17 @@ export async function patch(
     if (!hashed) {
       throw new InternalServerError('Error occured while hashing');
     }
+
+    user.password = hashed;
   }
 
-  const updateData = {
-    username: patchUser.username,
-    email: patchUser.email,
-    password: hashed,
-  };
+  const [data] = await database.update(users).set(user).where(eq(users.id, requestedId)).returning({
+    id: users.id,
+    email: users.email,
+    username: users.username,
+  });
 
-  const [{ id, email, username }] = await database
-    .update(users)
-    .set(updateData)
-    .where(eq(users.id, requestedId))
-    .returning();
-
-  return response.status(200).json({ id, email, username });
+  return response.status(200).json(data);
 }
 
 // DELETE
@@ -151,19 +140,20 @@ export async function _delete(request: Request, response: Response<DeleteRespons
   const { id: userId, role } = response.locals;
   const { id } = request.params;
 
-  if (userId !== id && role !== 'admin') {
+  const parsedId = await z.string().uuid().parseAsync(id);
+
+  if (role !== 'admin' && userId !== parsedId) {
     throw new ForbiddenError();
   }
 
-  if (!id && id.length < 32) {
-    throw new BadRequestError('Invalid id parameter');
-  }
+  const [data] = await database
+    .delete(users)
+    .where(eq(users.id, parsedId))
+    .returning({ id: users.id });
 
-  const [body] = await database.delete(users).where(eq(users.id, id)).returning({ id: users.id });
-
-  if (!body) {
+  if (!data) {
     throw new NoDataFoundError();
   }
 
-  return response.status(200).json(body);
+  return response.status(200).json(data);
 }
