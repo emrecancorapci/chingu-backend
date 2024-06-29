@@ -4,15 +4,15 @@ export interface JwtPayload {
   role: 'admin' | 'user';
 }
 
-export interface Id {
-  id: string;
-}
-
-export interface TableDate {
-  created_at: number;
-  updated_at: number;
-}
-
 export interface RequestParams {
   [key: string]: string;
+}
+
+export interface Data<T> {
+  data: T;
+}
+
+export interface ErrorResponse {
+  message: string;
+  errors?: string[];
 }
