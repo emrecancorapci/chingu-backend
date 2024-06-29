@@ -1,43 +1,41 @@
-import database from '@/config/database/drizzle.ts';
-import { RequestParams } from '@/types.ts';
 import { Request, Response } from 'express';
-import { tasks } from '@/config/database/schema.ts';
-import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
+import { and, eq, inArray } from 'drizzle-orm';
+
+import database from '@/config/database/drizzle.ts';
+import { Data, RequestParams } from '@/types.ts';
+import { projects, tasks } from '@/config/database/schema.ts';
 import {
   BadRequestError,
   InternalServerError,
   NoDataFoundError,
 } from '@/middlewares/error/base.ts';
-import { z } from 'zod';
-import { HasDates, HasId, TaskBody } from './zod.ts';
+import { TaskGetResponse, TaskPatchRequest, TaskPostRequest } from './zod.ts';
 
-const TaskFull = TaskBody.merge(HasId).merge(HasDates);
-type TaskResponse = z.infer<typeof TaskFull>;
+type TaskResponse = z.infer<typeof TaskGetResponse>;
 
 // GET
-type GetResponseBody = { task: TaskResponse };
+type GetResponseBody = Data<TaskResponse>;
 
 export async function get(request: Request, response: Response<GetResponseBody>) {
   const { id: userId, role } = response.locals;
-  const { id: taskId } = request.params;
+  const { id: idParam } = request.params;
 
-  if (typeof userId !== 'string' || typeof role !== 'string') {
-    throw new InternalServerError();
-  }
+  const taskId = z.string().length(40).parse(idParam);
 
-  let task: TaskResponse | undefined;
+  let data: TaskResponse | undefined;
 
   switch (role) {
     case 'admin': {
-      task = await database.query.tasks.findFirst({
-        where: ({ id }) => eq(id, taskId),
-      });
+      [data] = await database.select().from(tasks).where(eq(tasks.id, taskId));
       break;
     }
     case 'user': {
-      task = await database.query.tasks.findFirst({
-        where: ({ id: task_id, user_id }) => and(eq(user_id, userId), eq(task_id, taskId)),
-      });
+      [{ task: data }] = await database
+        .select()
+        .from(tasks)
+        .innerJoin(projects, eq(tasks.project_id, projects.id))
+        .where(and(eq(projects.user_id, userId), eq(tasks.id, taskId)));
       break;
     }
     default: {
@@ -45,34 +43,33 @@ export async function get(request: Request, response: Response<GetResponseBody>)
     }
   }
 
-  if (!task) {
-    throw new NoDataFoundError();
-  }
+  if (!data) throw new NoDataFoundError();
 
-  return response.status(200).json({ task });
+  return response.status(200).json({ data });
 }
 
 // GET ALL
-type GetAllResponseBody = { tasks: TaskResponse[] };
+type GetAllResponseBody = Data<TaskResponse[]>;
 
 export async function getAll(_: Request, response: Response<GetAllResponseBody>) {
   const { id: userId, role } = response.locals;
 
-  if (typeof userId !== 'string' || typeof role !== 'string') {
-    throw new InternalServerError();
-  }
-
-  let tasks: TaskResponse[] | undefined;
+  let data: TaskResponse[] | undefined;
 
   switch (role) {
     case 'admin': {
-      tasks = await database.query.tasks.findMany();
+      data = await database.select().from(tasks);
       break;
     }
     case 'user': {
-      tasks = await database.query.tasks.findMany({
-        where: ({ user_id }) => eq(user_id, userId),
-      });
+      {
+        data;
+      }
+      [] = await database
+        .select()
+        .from(tasks)
+        .innerJoin(projects, eq(tasks.project_id, projects.id))
+        .where(eq(projects.user_id, userId));
       break;
     }
     default: {
@@ -80,16 +77,14 @@ export async function getAll(_: Request, response: Response<GetAllResponseBody>)
     }
   }
 
-  if (tasks.length === 0) {
-    throw new NoDataFoundError();
-  }
+  if (!data || data.length === 0) throw new NoDataFoundError();
 
-  return response.status(200).json({ tasks });
+  return response.status(200).json({ data });
 }
 
 // POST
-type PostResponseBody = { id: string };
-type PostRequestBody = z.infer<typeof TaskBody>;
+type PostResponseBody = Data<{ id: string }>;
+type PostRequestBody = z.infer<typeof TaskPostRequest>;
 
 export async function post(
   request: Request<RequestParams, PostResponseBody, PostRequestBody>,
@@ -97,85 +92,104 @@ export async function post(
 ) {
   const { id: userId } = response.locals;
 
-  if (typeof userId !== 'string') {
-    throw new InternalServerError();
-  }
+  const task = { ...(await TaskPostRequest.parseAsync(request.body)), user_id: userId };
 
-  const task = await TaskBody.parseAsync(request.body);
+  const [data] = await database.insert(tasks).values(task).returning({ id: tasks.id });
 
-  const [insertedTask] = await database
-    .insert(tasks)
-    .values(task)
-    .returning({ id: tasks.id })
-    .catch((error) => {
-      throw new Error(error);
-    });
+  if (!data) throw new InternalServerError();
 
-  if (!insertedTask) {
-    throw new InternalServerError();
-  }
-
-  response.status(201).json({ id: insertedTask.id });
+  response.status(201).json({ data });
 }
 
 // PATCH
-const TaskWithId = TaskBody.partial().merge(HasId);
-type PatchBody = z.infer<typeof TaskWithId>;
-type PatchResponseBody = PatchBody;
-type PatchRequestBody = PatchBody;
+type PatchRequestBody = z.infer<typeof TaskPatchRequest>;
+type PatchResponseBody = Data<TaskResponse>;
 
 export async function patch(
   request: Request<RequestParams, PatchResponseBody, PatchRequestBody>,
   response: Response<PatchResponseBody>
 ) {
-  const { id: userId } = response.locals;
+  const { id: userId, role } = response.locals;
 
-  if (typeof userId !== 'string') {
-    throw new InternalServerError();
+  const task = await TaskPatchRequest.parseAsync(request.body);
+  let data: TaskResponse | undefined;
+
+  switch (role) {
+    case 'admin': {
+      [data] = await database.update(tasks).set(task).where(eq(tasks.id, task.id));
+      break;
+    }
+    case 'user': {
+      [data] = await database
+        .update(tasks)
+        .set(task)
+        .where(
+          and(
+            eq(tasks.id, task.id),
+            inArray(
+              tasks.project_id,
+              database
+                .select({ id: projects.id })
+                .from(projects)
+                .where(eq(projects.user_id, userId))
+            )
+          )
+        )
+        .returning();
+      break;
+    }
+    default: {
+      throw new BadRequestError('Token is corrupted');
+    }
   }
 
-  const newTask = await TaskWithId.parseAsync(request.body);
+  if (!data) throw new InternalServerError();
 
-  const [updatedTask] = await database
-    .update(tasks)
-    .set(newTask)
-    .where(and(eq(tasks.id, newTask.id), eq(tasks.user_id, userId)))
-    .returning();
-
-  if (!updatedTask) {
-    throw new InternalServerError();
-  }
-
-  const { id, title, description, priority, due_date, completed_at } = updatedTask;
-
-  response.status(200).json({ id, title, description, priority, due_date, completed_at });
+  response.status(200).json({ data });
 }
 
 // DELETE
-type DeleteResponseBody = { id: string };
+type DeleteResponseBody = Data<{ id: string }>;
 
 export async function deleteTask(request: Request, response: Response<DeleteResponseBody>) {
-  const { id: userId } = response.locals;
+  const { id: userId, role } = response.locals;
   const { id } = request.params;
 
-  if (typeof userId !== 'string') {
-    throw new InternalServerError();
-  }
-
-  if (!id) {
-    throw new BadRequestError('No id parameter');
-  }
+  if (typeof userId !== 'string') throw new InternalServerError();
+  if (!id) throw new BadRequestError('No id parameter');
 
   const taskId = z.string().length(40).parse(id);
+  let data: { id: string } | undefined;
 
-  const [body] = await database
-    .delete(tasks)
-    .where(and(eq(tasks.user_id, userId), eq(tasks.id, taskId)))
-    .returning({ id: tasks.id });
-
-  if (!body) {
-    throw new NoDataFoundError();
+  switch (role) {
+    case 'admin': {
+      [data] = await database.delete(tasks).where(eq(tasks.id, taskId)).returning({ id: tasks.id });
+      break;
+    }
+    case 'user': {
+      [data] = await database
+        .delete(tasks)
+        .where(
+          and(
+            eq(tasks.id, taskId),
+            inArray(
+              tasks.project_id,
+              database
+                .select({ id: projects.id })
+                .from(projects)
+                .where(eq(projects.user_id, userId))
+            )
+          )
+        )
+        .returning({ id: tasks.id });
+      break;
+    }
+    default: {
+      throw new BadRequestError('Token is corrupted');
+    }
   }
 
-  response.status(200).json(body);
+  if (!data) throw new NoDataFoundError();
+
+  response.status(200).json({ data });
 }
